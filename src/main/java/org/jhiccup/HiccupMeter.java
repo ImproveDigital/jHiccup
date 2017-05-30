@@ -3,6 +3,7 @@
  * as explained at http://creativecommons.org/publicdomain/zero/1.0/
  *
  * @author Gil Tene
+ * @author Szabolcs Pota (ImproveDigital)
  */
 
 package org.jhiccup;
@@ -10,7 +11,6 @@ package org.jhiccup;
 import com.timgroup.statsd.NonBlockingStatsDClient;
 import com.timgroup.statsd.StatsDClient;
 import org.HdrHistogram.Histogram;
-import org.HdrHistogram.HistogramLogWriter;
 import org.HdrHistogram.SingleWriterRecorder;
 
 import java.io.File;
@@ -24,6 +24,9 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
+
+import static org.jhiccup.HistogramLogWriterFactory.histogramLogWriter;
+import static org.jhiccup.HistogramLogWriterFactory.noOpHistogramLogWriter;
 
 /**
  * HiccupMeter is a platform pause measurement tool, it is meant to observe
@@ -72,6 +75,14 @@ import java.util.concurrent.TimeUnit;
  * a detailed histogram log file under the <logfile>.histogram name. A new
  * histogram log file will be produced each interval, and will replace the
  * one generated in the previous interval.
+ * <p>
+ * It also possible to enable statsd reporting via the <code>-statsd host[:port]</code>
+ * option. When specified in each reporting interval values of the current histogram
+ * at 99.9%, 99.99%, 99.999% and 100% are sent to the statsd daemon listening
+ * on <code>host[:port]</code>. The port is optional. If omitted the default 8125
+ * is used. You can also disable logging histograms into file once values are sent
+ * to statsd by the <code>-nohistolog</code> option. Note that all other logs can
+ * be still logged into file.
  * <p>
  * HiccupMeter can be configured to delay the start of measurement
  * (using the -d <startDelayMs> flag, defaults to 30000 msec). It can also be
@@ -137,8 +148,6 @@ import java.util.concurrent.TimeUnit;
  * and a ready to use jar file can all be found on GitHub,
  * at http://giltene.github.com/HdrHistogram
  */
-
-
 public class HiccupMeter extends Thread {
 
     private static final String versionString = "jHiccup version " + Version.version;
@@ -147,7 +156,7 @@ public class HiccupMeter extends Thread {
 
     protected final PrintStream log;
 
-    protected final HistogramLogWriter histogramLogWriter;
+    protected final IHistogramLogWriter histogramLogWriter;
 
     protected final HiccupMeterConfiguration config;
 
@@ -190,6 +199,8 @@ public class HiccupMeter extends Thread {
         public boolean useStatsD = false;
         public String statsdHost = null;
         public int statsdPort = 8125;
+
+        public boolean histogramLogEnabled = true;
 
         public boolean error = false;
         public String errorMessage = "";
@@ -255,6 +266,8 @@ public class HiccupMeter extends Thread {
                             statsdPort = Integer.parseInt(addressParts[1]);
                         }
                         useStatsD = true;
+                    } else if (args[i].equals("-nohistolog")) {
+                        histogramLogEnabled = false;
                     } else {
                         throw new Exception("Invalid args: " + args[i]);
                     }
@@ -355,7 +368,8 @@ public class HiccupMeter extends Thread {
                 String validArgs =
                         "\"[-v] [-c] [-x controlProcessArgs] [-o] [-0] [-n] [-p pidOfProcessToAttachTo] [-j jHiccupJarFileName] " +
                         "[-i reportingIntervalMs] [-h] [-t runTimeMs] [-d startDelayMs] " +
-                        "[-l logFileName] [-r resolutionMs] [-terminateWithStdInput] [-f inputFileName] [-statsd host:port]\"\n";
+                        "[-l logFileName] [-r resolutionMs] [-terminateWithStdInput] [-f inputFileName] " +
+                        "[-statsd host:port] [-nohistolog]\"\n";
 
                 System.err.println("valid arguments = " + validArgs);
 
@@ -384,10 +398,11 @@ public class HiccupMeter extends Thread {
                 "                             parent does).\n" +
                 " [-f inputFileName]          Read timestamp and latency data from input file\n" +
                 "                             instead of sampling it directly\n" +"" +
-                " [-fz]                       (applies only in conjunction with -f) fill in blank time ranges" +
+                " [-fz]                       (applies only in conjunction with -f) fill in blank time ranges\n" +
                 "                             with zero values. Useful e.g. when processing GC-log derived input.\n" +
                 " [-s numberOfSignificantValueDigits]\n" +
-                " [-statsd host:port]         Also send hiccup values to the specified statsd daemon.");
+                " [-statsd host:port]         Also send hiccup values to the specified statsd daemon.\n" +
+                " [-nohistolog]               Disable histogram logging into file. Useful with statsd metric collector.");
             }
         }
     }
@@ -396,7 +411,7 @@ public class HiccupMeter extends Thread {
         this.setName("HiccupMeter");
         config = new HiccupMeterConfiguration(args, defaultLogFileName);
         log = new PrintStream(new FileOutputStream(config.logFileName), false);
-        histogramLogWriter = new HistogramLogWriter(log);
+        histogramLogWriter = config.histogramLogEnabled ? histogramLogWriter(log) : noOpHistogramLogWriter();
         statsdClient = config.useStatsD
             ? new NonBlockingStatsDClient("jhiccup.percentiles", config.statsdHost, config.statsdPort) : null;
         this.setDaemon(true);
