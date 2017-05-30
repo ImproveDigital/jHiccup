@@ -160,11 +160,16 @@
                         <configuration>
                             <includes>
                                 <include>org.hdrhistogram:HdrHistogram</include>
+                                <include>com.datadoghq:java-dogstatsd-client</include>
                             </includes>
                             <rules>
                                 <rule>
                                     <pattern>org.HdrHistogram.**</pattern>
                                     <result>org.jhiccup.internal.hdrhistogram.@1</result>
+                                </rule>
+                                <rule>
+                                    <pattern>com.timgroup.statsd.**</pattern>
+                                    <result>org.jhiccup.internal.statsd.@1</result>
                                 </rule>
                             </rules>
                             <overwrite>true</overwrite>
@@ -232,6 +237,11 @@
             <groupId>org.hdrhistogram</groupId>
             <artifactId>HdrHistogram</artifactId>
             <version>2.1.9</version>
+        </dependency>
+        <dependency>
+            <groupId>com.datadoghq</groupId>
+            <artifactId>java-dogstatsd-client</artifactId>
+            <version>2.3</version>
         </dependency>
     </dependencies>
 

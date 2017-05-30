@@ -7,12 +7,22 @@
 
 package org.jhiccup;
 
-import org.HdrHistogram.*;
+import com.timgroup.statsd.NonBlockingStatsDClient;
+import com.timgroup.statsd.StatsDClient;
+import org.HdrHistogram.Histogram;
+import org.HdrHistogram.HistogramLogWriter;
+import org.HdrHistogram.SingleWriterRecorder;
 
-import java.io.*;
-import java.util.*;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.PrintStream;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
+import java.lang.management.MemoryUsage;
 import java.text.SimpleDateFormat;
-import java.lang.management.*;
+import java.util.Date;
+import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -141,6 +151,8 @@ public class HiccupMeter extends Thread {
 
     protected final HiccupMeterConfiguration config;
 
+    protected final StatsDClient statsdClient;
+
     protected static class HiccupMeterConfiguration {
         public boolean terminateWithStdInput = false;
         public double resolutionMs = 1.0;
@@ -174,6 +186,10 @@ public class HiccupMeter extends Thread {
         public long lowestTrackableValue = 1000L * 20L; // default to ~20usec best-case resolution
         public long highestTrackableValue = 3600 * 1000L * 1000L * 1000L;
         public int numberOfSignificantValueDigits = 2;
+
+        public boolean useStatsD = false;
+        public String statsdHost = null;
+        public int statsdPort = 8125;
 
         public boolean error = false;
         public String errorMessage = "";
@@ -232,6 +248,13 @@ public class HiccupMeter extends Thread {
                         controlProcessJvmArgsExplicitlySpecified = true;
                     } else if (args[i].equals("-o")) {
                         logFormatCsv = true;
+                    } else if (args[i].equals("-statsd")) {
+                        String[] addressParts = args[++i].split(":", 2);
+                        statsdHost = addressParts[0];
+                        if (addressParts.length > 1) {
+                            statsdPort = Integer.parseInt(addressParts[1]);
+                        }
+                        useStatsD = true;
                     } else {
                         throw new Exception("Invalid args: " + args[i]);
                     }
@@ -332,7 +355,7 @@ public class HiccupMeter extends Thread {
                 String validArgs =
                         "\"[-v] [-c] [-x controlProcessArgs] [-o] [-0] [-n] [-p pidOfProcessToAttachTo] [-j jHiccupJarFileName] " +
                         "[-i reportingIntervalMs] [-h] [-t runTimeMs] [-d startDelayMs] " +
-                        "[-l logFileName] [-r resolutionMs] [-terminateWithStdInput] [-f inputFileName]\"\n";
+                        "[-l logFileName] [-r resolutionMs] [-terminateWithStdInput] [-f inputFileName] [-statsd host:port]\"\n";
 
                 System.err.println("valid arguments = " + validArgs);
 
@@ -363,7 +386,8 @@ public class HiccupMeter extends Thread {
                 "                             instead of sampling it directly\n" +"" +
                 " [-fz]                       (applies only in conjunction with -f) fill in blank time ranges" +
                 "                             with zero values. Useful e.g. when processing GC-log derived input.\n" +
-                " [-s numberOfSignificantValueDigits]\n");
+                " [-s numberOfSignificantValueDigits]\n" +
+                " [-statsd host:port]         Also send hiccup values to the specified statsd daemon.");
             }
         }
     }
@@ -373,6 +397,8 @@ public class HiccupMeter extends Thread {
         config = new HiccupMeterConfiguration(args, defaultLogFileName);
         log = new PrintStream(new FileOutputStream(config.logFileName), false);
         histogramLogWriter = new HistogramLogWriter(log);
+        statsdClient = config.useStatsD
+            ? new NonBlockingStatsDClient("jhiccup.percentiles", config.statsdHost, config.statsdPort) : null;
         this.setDaemon(true);
     }
 
@@ -654,6 +680,12 @@ public class HiccupMeter extends Thread {
 
                     if (intervalHistogram.getTotalCount() > 0) {
                         histogramLogWriter.outputIntervalHistogram(intervalHistogram);
+                        if (config.useStatsD) {
+                            statsdClient.gauge("99_9", intervalHistogram.getValueAtPercentile(99.9));
+                            statsdClient.gauge("99_99", intervalHistogram.getValueAtPercentile(99.99));
+                            statsdClient.gauge("99_999", intervalHistogram.getValueAtPercentile(99.999));
+                            statsdClient.gauge("100", intervalHistogram.getMaxValue());
+                        }
                     }
                 }
             }
