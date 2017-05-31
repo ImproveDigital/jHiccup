@@ -276,6 +276,11 @@ For example you can enable jHiccup metrics of the host for an indefinite
 
     % java -jar jHiccup.jar -i 60000 -statsd localhost -nohistolog
 
+This will send metric every minute. If used on multiple hosts this
+ will generate a plot like this:
+
+![statsd example]
+
 Under the hood the code uses the `java-dogstatd-client` that can be
 found on GitHub at https://github.com/DataDog/java-dogstatsd-client
 
@@ -309,4 +314,5 @@ jHiccup can be (re)built from source files using Maven:
 
     % mvn package
 
-[example plot]:https://raw.github.com/giltene/jHiccup/master/examplePlot.png "Example jHiccup plot"
+[example plot]:./examplePlot.png "Example jHiccup plot"
+[statsd example]:./statsdDatadogExample.png "Example DataDog plot"
