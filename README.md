@@ -1,15 +1,15 @@
 # jHiccup
-[![Build Status](https://travis-ci.org/giltene/jHiccup.svg?branch=master)](https://travis-ci.org/giltene/jHiccup)
-[![Gitter](https://img.shields.io/gitter/room/gitterHQ/gitter.svg)](https://gitter.im/giltene/jHiccup?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 ----------------------------------------------------------------------------
 
 Written by Gil Tene of Azul Systems, and released to the public domain
 as explained at http://creativecommons.org/publicdomain/zero/1.0
 
-----------------------------------------------------------------------------
+Extended by ImproveDigital to add statsd support.
 
-Version: 2.0.7
-----------------------------------------------------------------------------
+---
+
+Version: 2.0.8
+--------------
 
 jHiccup is a non-intrusive instrumentation tool that logs and records
 platform "hiccups" - including the JVM stalls that often happen when
@@ -250,6 +250,34 @@ corrects for "coordinated omission" situations (where long response times
 lead to "skipped" requests that would have typically correlated with "bad"
 response times). A "large" value (e.g. `-r 100000`) can easily be specified
 to avoid any correction of this situation.
+
+----------------------------------------------------------------------------
+
+# Enabling (DataDog) statsd metric reporting
+
+It also possible to enable statsd reporting via the `-statsd host[:port]`
+option. When specified in each reporting interval values of the current histogram
+at 99.9%, 99.99%, 99.999% and 100% are sent to the statsd daemon listening
+on `host[:port]`. The port is optional. If omitted the default 8125
+is used. The metrics are sent as statsd gauges with nanosecond resolution.
+The keys used are the following:
+
+- jhiccup.percentiles.99_9
+- jhiccup.percentiles.99_99
+- jhiccup.percentiles.99_999
+- jhiccup.percentiles.100
+
+You can also disable logging histograms into file once values are sent
+to statsd by the `-nohistolog` option. Note that all other logs are still
+logged into file.
+
+For example you can enable jHiccup metrics of the host for an indefinite
+ time with the following command.
+
+    % java -jar jHiccup.jar -i 60000 -statsd localhost -nohistolog
+
+Under the hood the code uses the `java-dogstatd-client` that can be
+found on GitHub at https://github.com/DataDog/java-dogstatsd-client
 
 ----------------------------------------------------------------------------
 
